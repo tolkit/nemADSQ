@@ -64,12 +64,14 @@ process pycoQC {
     tuple val(strain), val(summary_file)
     
     output:
-    tuple val(strain), path("${strain}.html")
+    tuple val(strain), path("${strain}.{json,html}")
 
     script:
         """
         iget $summary_file
-        pycoQC --summary_file *gz --html_outfile ${strain}.html
+        pycoQC --summary_file *gz --report_title ${strain} \
+            --json_outfile ${strain}.json \
+            --html_outfile ${strain}.html
         """
 }
 
