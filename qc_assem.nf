@@ -19,7 +19,7 @@ reads = Channel.fromPath(params.reads, checkIfExists: true)
                 .map { file -> tuple(file.Name - ~/(_filtered)?(\.telo)?(\.ccs)?(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 fastFiles = Channel.fromPath(params.assemblies, checkIfExists: true)
-assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
+assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.purged)?(\.hic_scaff)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 busco2nigons = Channel.fromPath(params.busco2nigons, checkIfExists: true).collect()
 
@@ -63,6 +63,31 @@ process busco {
       """
 }
 
+process red {
+    tag "${assembler}"
+    label 'nemaQC'
+    publishDir "$params.outdir/red", mode: 'copy'
+
+    input:
+      tuple val(strain), val(assembler), path(assembly)
+
+    output:
+      path "${strain}.bed"
+
+    script:
+      """
+      mkdir Red_dir Red_out
+      if [ -f *.gz ]; then
+            gunzip -c $assembly > Red_dir/assembly.fa
+        else
+            ln -s $assembly Red_dir/assembly.fa
+      fi
+      /software/team301/Red-2.0/bin/Red -gnm Red_dir -msk Red_out/
+      soft_mask2bed.py -f Red_out/assembly.msk -o ${strain}.bed
+      
+      """
+}
+
 process get_telomeric_reads {
     tag "${strain}"
     label 'nemaQC'
@@ -75,10 +100,11 @@ process get_telomeric_reads {
 
     script:
       """
-      zcat $reads | filter_telomeric_reads.py --motif ${params.telomere} \
+      zcat $reads | filter_telomeric_reads.py -r - -s ${params.telomere} \
         --times ${params.min_occurr} --out ${strain}.telo.fasta.gz
       """
 }
+
 
 process map_telomeric_reads {
     tag "${assemblies[1]}"
@@ -174,6 +200,7 @@ process get_contiguity_stats {
 
 workflow {
     busco(geno_busco, busco_db_dir)
+    red(assemblies)
     count_telomeric_repeat(assemblies)
     get_telomeric_reads(reads)
     map_telomeric_reads(get_telomeric_reads.out.cross(assemblies))
