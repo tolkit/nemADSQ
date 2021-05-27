@@ -9,7 +9,7 @@ params.busco_downloads = './busco_downloads'
 params.telomere = 'TTAGGC'
 params.busco2nigons = "gene2Nigon_busco20200927.tsv.gz"
 params.min_occurr = 15
-params.teloRepeatWindowSize = 1000
+params.teloRepeatWindowSize = 10000
 params.minimumGenesPerSequence = 15
 params.minimumNigonFrac = 0.9
 params.minimumFracAlignedTeloReads = 0.1
@@ -19,7 +19,7 @@ reads = Channel.fromPath(params.reads, checkIfExists: true)
                 .map { file -> tuple(file.Name - ~/(_filtered)?(\.telo)?(\.ccs)?(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 fastFiles = Channel.fromPath(params.assemblies, checkIfExists: true)
-assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
+assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.purged)?(\.hic_scaff)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 busco2nigons = Channel.fromPath(params.busco2nigons, checkIfExists: true).collect()
 
@@ -28,6 +28,24 @@ busco_db_dir = file(params.busco_downloads)
 geno_busco = assemblies.combine(busco_dbs)
 
 
+process decompress_fasta {
+    tag "${assembler}"
+
+    input:
+      tuple val(strain), val(assembler), path(assembly)
+
+    output:
+      tuple val(strain), val(assembler), path('assembly.fasta')
+
+    script:
+      """
+      if [ -f *.gz ]; then
+            gunzip -c $assembly > assembly.fasta
+        else
+            ln -s $assembly assembly.fasta
+      fi
+      """
+}
 
 process busco {
     tag "${assembler}_${busco_db}"
@@ -44,12 +62,7 @@ process busco {
 
     script:
       """
-      if [ -f *.gz ]; then
-            gunzip -c $genome > assembly.fasta
-        else
-            ln -s $genome assembly.fasta
-      fi
-      busco -c ${task.cpus} -l $busco_db -i assembly.fasta --out run_busco --mode geno
+      busco -c ${task.cpus} -l $busco_db -i $genome --out run_busco --mode geno
       awk 'BEGIN{FS="\\t";OFS=FS}(\$3 !~ /:/){print}' run_busco/run_*/full_table.tsv > ${assembler}_${busco_db}_full_table.tsv
       mv run_busco/short_summary* ${assembler}_${busco_db}_short_summary.txt
       #mv run_busco/run_*/full_table.tsv ${assembler}_${busco_db}_full_table.tsv
@@ -59,7 +72,79 @@ process busco {
           echo \">\$(basename \${file%\$ext})\" >> \$seqFile; tail -n +2 \$file >> \$seqFile;
         done
       done
-      rm -rf run_busco/ assembly.fasta
+      rm -rf run_busco/
+      """
+}
+
+process red {
+    tag "${assembler}"
+    // publishDir "$params.outdir/red", mode: 'copy'
+
+    input:
+      tuple val(strain), val(assembler), path(assembly)
+
+    output:
+      tuple val(strain), val(assembler), path("Red_out/assembly.msk")
+
+    script:
+      """
+      mkdir Red_dir Red_out
+      mv $assembly Red_dir/assembly.fa
+
+      /software/team301/Red-2.0/bin/Red -gnm Red_dir -msk Red_out/
+      """
+}
+
+process red2bed {
+    tag "${assembler}"
+    label 'nemaQC'
+    publishDir "$params.outdir/red", mode: 'copy'
+
+    input:
+      tuple val(strain), val(assembler), path(assembly)
+
+    output:
+      tuple val(assembler), path("${assembler}.red.bed.gz")
+
+    script:
+      """
+      samtools faidx ${assembly}
+      cut -f 1,2 ${assembly}.fai > ${assembler}.seqlen.tsv
+
+      cat $assembly | soft_mask2bed | \
+        perl -ne 's/ [^\\t]+\\t/\\t/; print' > ${assembler}.bed
+      
+      bedtools makewindows -g ${assembler}.seqlen.tsv -w ${params.teloRepeatWindowSize} | \
+        bedtools coverage -a ${assembler}.bed -b stdin | \
+        awk -F '\\t' 'BEGIN{OFS=FS}{print \$1, \$2, \$3, \$7, "repeats"}' | \
+        gzip -c > ${assembler}.red.bed.gz
+      rm ${assembler}.seqlen.tsv ${assembler}.bed
+      """
+}
+
+process gc_by_windows {
+    tag "${assembler}"
+    label 'nemaQC'
+    publishDir "$params.outdir/gc", mode: 'copy'
+
+    input:
+      tuple val(strain), val(assembler), path(assembly)
+
+    output:
+      tuple val(assembler), path("${assembler}.gc.bed.gz")
+
+    script:
+      """
+      samtools faidx ${assembly}
+      cut -f 1,2 ${assembly}.fai > ${assembler}.seqlen.tsv
+      bedtools makewindows -g ${assembler}.seqlen.tsv \
+        -w ${params.teloRepeatWindowSize} > windows.bed
+
+      bedtools nuc -fi assembly.fasta -bed windows.bed | \
+        cut -f 1-4 | tail -n+2 | \
+        gzip -c > ${assembler}.gc.bed.gz
+      
+      rm assembly.fasta* ${assembler}.seqlen.tsv windows.bed
       """
 }
 
@@ -75,10 +160,11 @@ process get_telomeric_reads {
 
     script:
       """
-      zcat $reads | filter_telomeric_reads.py --motif ${params.telomere} \
+      zcat $reads | filter_telomeric_reads.py -r - -s ${params.telomere} \
         --times ${params.min_occurr} --out ${strain}.telo.fasta.gz
       """
 }
+
 
 process map_telomeric_reads {
     tag "${assemblies[1]}"
@@ -112,9 +198,8 @@ process count_telomeric_repeat {
 
     script:
       """
-      zcat $assembly | \
-        awk '/^>/{if (l!="") print l; printf "%s\\t", \$1; l=0; next}{l+=length(\$0)}END{print l}' | \
-        sed "s/>//" > ${assembler}.seqlen.tsv
+      samtools faidx ${assembly}
+      cut -f 1,2 ${assembly}.fai > ${assembler}.seqlen.tsv
       seqkit locate --bed -M -G -p ${params.telomere} $assembly | \
         cut -f 1,2,3 | \
         sort -k1,1 -k2,2n > ${assembler}.teloRepeats.tsv
@@ -134,7 +219,8 @@ process nematode_chromosome_QC {
     label 'nemaQC'
 
     input:
-      tuple val(assembler), path(buscoTable), path(teloMappedReads), path(teloRepeats)
+      tuple val(assembler), path(buscoTable), path(teloMappedReads),
+      path(teloRepeats), path(allRepeats), path(gcWindows)
       path(busco2nigons)
     
     output:
@@ -147,6 +233,8 @@ process nematode_chromosome_QC {
         --nigon $busco2nigons --busco $buscoTable \
         --teloMappedPaf $teloMappedReads \
         --teloRepeats $teloRepeats \
+        --allRepeats $allRepeats \
+        --gcFrac $gcWindows \
         --minimumGenesPerSequence $params.minimumGenesPerSequence \
         --minimumNigonFrac $params.minimumNigonFrac \
         --minimumFracAlignedTeloReads $params.minimumFracAlignedTeloReads \
@@ -173,11 +261,14 @@ process get_contiguity_stats {
 
 
 workflow {
-    busco(geno_busco, busco_db_dir)
-    count_telomeric_repeat(assemblies)
+    decompress_fasta(assemblies)
+    busco(decompress_fasta.out.combine(busco_dbs), busco_db_dir)
+    red(decompress_fasta.out) | red2bed
+    gc_by_windows(decompress_fasta.out)
+    count_telomeric_repeat(decompress_fasta.out)
     get_telomeric_reads(reads)
-    map_telomeric_reads(get_telomeric_reads.out.cross(assemblies))
+    map_telomeric_reads(get_telomeric_reads.out.cross(decompress_fasta.out))
     get_contiguity_stats(fastFiles.collect())
-    nematode_chromosome_QC(busco.out.busco_full.join(map_telomeric_reads.out.join(count_telomeric_repeat.out)),
+    nematode_chromosome_QC(busco.out.busco_full.join(map_telomeric_reads.out.join(count_telomeric_repeat.out.join(red2bed.out.join(gc_by_windows.out)))),
      busco2nigons)
 }
