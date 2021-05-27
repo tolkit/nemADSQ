@@ -197,12 +197,14 @@ if(nrow(teloMappings) > 0){
                                 map_match >= (query_length * 0.8),
                                 target_length > windwSize * 2)
   
-  mappedTelo <- group_by(longSeqTeloMappings, target_name) %>%
+  mappedTelo <- mutate(longSeqTeloMappings,
+                       frac_target_start = (target_start / target_length)) %>%
+    group_by(target_name) %>%
     mutate(tReads = n()) %>%
     ungroup() %>%
     filter(tReads > minFracAlignedTeloReads * max(tReads)) %>%
     select(-tReads) %>%
-    select(target_name, target_start, target_end, strand)
+    select(target_name, target_start, target_end, strand, frac_target_start)
   
   # Add missing levels
   fLev_mappedTelo <- filter(teloRepsForPlot, 

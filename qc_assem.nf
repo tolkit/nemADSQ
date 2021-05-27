@@ -9,7 +9,7 @@ params.busco_downloads = './busco_downloads'
 params.telomere = 'TTAGGC'
 params.busco2nigons = "gene2Nigon_busco20200927.tsv.gz"
 params.min_occurr = 15
-params.teloRepeatWindowSize = 1000
+params.teloRepeatWindowSize = 10000
 params.minimumGenesPerSequence = 15
 params.minimumNigonFrac = 0.9
 params.minimumFracAlignedTeloReads = 0.1
@@ -104,14 +104,14 @@ process red2bed {
       tuple val(strain), val(assembler), path(assembly)
 
     output:
-      path "${assembler}.red.bed.gz"
+      tuple val(assembler), path("${assembler}.red.bed.gz")
 
     script:
       """
       samtools faidx ${assembly}
       cut -f 1,2 ${assembly}.fai > ${assembler}.seqlen.tsv
 
-      zcat $assembly | soft_mask2bed | \
+      cat $assembly | soft_mask2bed | \
         perl -ne 's/ [^\\t]+\\t/\\t/; print' > ${assembler}.bed
       
       bedtools makewindows -g ${assembler}.seqlen.tsv -w ${params.teloRepeatWindowSize} | \
@@ -131,7 +131,7 @@ process gc_by_windows {
       tuple val(strain), val(assembler), path(assembly)
 
     output:
-      path "${assembler}.gc.bed.gz"
+      tuple val(assembler), path("${assembler}.gc.bed.gz")
 
     script:
       """
@@ -219,7 +219,8 @@ process nematode_chromosome_QC {
     label 'nemaQC'
 
     input:
-      tuple val(assembler), path(buscoTable), path(teloMappedReads), path(teloRepeats)
+      tuple val(assembler), path(buscoTable), path(teloMappedReads),
+      path(teloRepeats), path(allRepeats), path(gcWindows)
       path(busco2nigons)
     
     output:
@@ -232,6 +233,8 @@ process nematode_chromosome_QC {
         --nigon $busco2nigons --busco $buscoTable \
         --teloMappedPaf $teloMappedReads \
         --teloRepeats $teloRepeats \
+        --allRepeats $allRepeats \
+        --gcFrac $gcWindows \
         --minimumGenesPerSequence $params.minimumGenesPerSequence \
         --minimumNigonFrac $params.minimumNigonFrac \
         --minimumFracAlignedTeloReads $params.minimumFracAlignedTeloReads \
@@ -266,6 +269,6 @@ workflow {
     get_telomeric_reads(reads)
     map_telomeric_reads(get_telomeric_reads.out.cross(decompress_fasta.out))
     get_contiguity_stats(fastFiles.collect())
-    nematode_chromosome_QC(busco.out.busco_full.join(map_telomeric_reads.out.join(count_telomeric_repeat.out)),
+    nematode_chromosome_QC(busco.out.busco_full.join(map_telomeric_reads.out.join(count_telomeric_repeat.out.join(red2bed.out.join(gc_by_windows.out)))),
      busco2nigons)
 }
