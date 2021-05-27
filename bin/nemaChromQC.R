@@ -11,29 +11,33 @@ library(ggplot2)
 library(ggpubr)
 
 option_list = list(
-  make_option(c("-b", "--busco"), type="character", default=NULL, 
+  make_option(c("-b", "--busco"), type="character", default=NULL,
               help="busco full_table.tsv file", metavar="file.tsv"),
-  make_option(c("-n", "--nigon"), type="character", default="gene2Nigon_busco20200927.tsv.gz", 
+  make_option(c("-n", "--nigon"), type="character", default="gene2Nigon_busco20200927.tsv.gz",
               help="busco id assignment to Nigons [default=%default]", metavar="file.tsv"),
-  make_option(c("-t", "--teloMappedPaf"), type="character", default=NULL, 
+  make_option(c("-t", "--teloMappedPaf"), type="character", default=NULL,
               help="mapping of telomeric reads in PAF format [default=%default]", metavar="file.tsv"),
-  make_option(c("-r", "--teloRepeats"), type="character", default=NULL, 
+  make_option(c("-r", "--teloRepeats"), type="character", default=NULL,
               help="number of telomeric repeats per window in BED format [default=%default]", metavar="file.tsv"),
-  make_option(c("-w", "--windowSize"), type="integer", default=5e5, 
+  make_option(c("-a", "--allRepeats"), type="character", default=NULL,
+              help="density of repeats per window in BED format [default=%default]", metavar="file.tsv"),
+  make_option(c("-g", "--gcFrac"), type="character", default=NULL,
+              help="GC% per window in BED format [default=%default]", metavar="file.tsv"),
+  make_option(c("-w", "--windowSize"), type="integer", default=5e5,
               help="window size to bin the busco genes [default=%default]. Sequences shorter than twice this integer will not be shown in the plot", metavar="integer"),
-  make_option(c("-m", "--minimumGenesPerSequence"), type="integer", default=15, 
+  make_option(c("-m", "--minimumGenesPerSequence"), type="integer", default=15,
               help="sequences (contigs/scaffolds) with less than this number of busco genes will not be shown in the plot [default=%default]", metavar="integer"),
-  make_option(c("-k", "--minimumNigonFrac"), type="numeric", default=0.9, 
+  make_option(c("-k", "--minimumNigonFrac"), type="numeric", default=0.9,
               help="sequences containing more than this fraction of a given Nigon are considered to represent the whole Nigon unit [default=%default]", metavar="integer"),
-  make_option(c("-p", "--minimumFracAlignedTeloReads"), type="numeric", default=0.1, 
+  make_option(c("-p", "--minimumFracAlignedTeloReads"), type="numeric", default=0.1,
                 help="only sequences with more than this fraction of the telomeric reads are considered for the plot of mapped telomeric reads and for completeness assessment based on mapping position of telomeric reads [default=%default]", metavar="integer"),
-  make_option(c("-s", "--assemblyName"), type="character", default=NULL, 
+  make_option(c("-s", "--assemblyName"), type="character", default=NULL,
               help="prefix for output files [default=%default]", metavar="strain_assembler"),
-  make_option(c("--height"), type="integer", default=6, 
+  make_option(c("--height"), type="integer", default=6,
               help="height of plot. Increase this value according to the number of ploted sequences [default=%default]", metavar="integer"),
-  make_option(c("--width"), type="integer", default=5, 
+  make_option(c("--width"), type="integer", default=5,
               help="width of plot [default=%default]", metavar="integer")
-); 
+);
 
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
@@ -43,17 +47,21 @@ nigonDictFile           <- opt$nigon
 buscoFile               <- opt$busco
 teloMappedFile          <- opt$teloMappedPaf
 teloRepsFile            <- opt$teloRepeats
+allRepsFile             <- opt$allRepeats
+gcFile                  <- opt$gcFrac
 minimumGenesPerSequence <- opt$minimumGenesPerSequence
 minNigonFrac            <- opt$minimumNigonFrac
 minFracAlignedTeloReads <- opt$minimumFracAlignedTeloReads
 windwSize               <- opt$windowSize
 
 # Parameters used when testing
-# assemName <- "DF5120_hifiasm"
-# nigonDictFile <- "tmp/gene2Nigon_busco20200927.tsv.gz"
-# buscoFile <- "tmp/SB133.wtdbg2_nematoda_odb10_full_table.tsv"
-# teloMappedFile <- "tmp/SB133.wtdbg2.teloMapped.paf.gz"
-# teloRepsFile <- "tmp/SB133.wtdbg2_teloRepeatCounts.tsv.gz"
+# assemName <- "DF5120.canu.purged.hic_scaff"
+# nigonDictFile <- "gene2Nigon_busco20200927.tsv.gz"
+# buscoFile <- "DF5120.canu.purged.hic_scaff_nematoda_odb10_full_table.tsv"
+# teloMappedFile <- "DF5120.canu.purged.hic_scaff.teloMapped.paf.gz"
+# teloRepsFile <- "DF5120.canu.purged.hic_scaff_teloRepeatCounts.tsv.gz"
+# allRepsFile <- "DF5120.canu.purged.hic_scaff.red.bed.gz"
+# gcFile <- "DF5120.canu.purged.hic_scaff.gc.bed.gz"
 # minimumGenesPerSequence <- 15
 # minNigonFrac <- .90
 # minFracAlignedTeloReads <- 0.1
@@ -138,8 +146,26 @@ busco <- suppressWarnings(read_tsv(buscoFile,
 teloMappings <- read_paf(teloMappedFile)
 telomWind <- read_tsv(teloRepsFile,
                       col_names = c("contig", "wStart",
-                                    "wEnd", "teloCount",
+                                    "wEnd", "value",
                                     "feat"))
+repsWind <- read_tsv(allRepsFile,
+                      col_names = c("contig", "wStart",
+                                    "wEnd", "value",
+                                    "feat"))
+
+gcWind <- read_tsv(gcFile,
+                     col_names = c("contig", "wStart",
+                                   "wEnd", "value"))
+
+
+# Three kinds of panels: 
+# 1) multifactor feature in big windows (Nigons)
+# 2) feature in sparse ranges (telomeric mappings)
+# 3) single feature in small windows (GC, repeats, telomeric repeats)
+
+# The tricky part is to include the same panels for telomeric mappings
+# even if they are have no telomere. I will add 1 count at the very end
+# of each contig to keep axis and levels.
 
 # Filter data
 fbusco <- filter(busco, !Status %in% c("Missing")) %>%
@@ -148,6 +174,7 @@ fbusco <- filter(busco, !Status %in% c("Missing")) %>%
          stPos = start) %>%
   filter(nigon != "-")
 
+
 consUsco <- group_by(fbusco, Sequence) %>%
   mutate(nGenes = n(),
          mxGpos = max(stPos)) %>%
@@ -155,25 +182,50 @@ consUsco <- group_by(fbusco, Sequence) %>%
   filter(nGenes > minimumGenesPerSequence,
          mxGpos > windwSize * 2)
 
+teloRepsForPlot <- filter(telomWind, contig %in% consUsco$Sequence)
+allRepsForPlot <- filter(repsWind, contig %in% consUsco$Sequence)
+gcForPlot <- filter(gcWind, contig %in% consUsco$Sequence,
+                    value < quantile(value, 0.999),
+                    value > quantile(value, 0.001))
+
+
 
 if(nrow(teloMappings) > 0){
-longSeqTeloMappings <- filter(teloMappings,
-                     tp == "P",
-                     map_match >= (query_length * 0.8),
-                     target_length > windwSize * 2)
-
-mappedTelo <- mutate(longSeqTeloMappings,
-                       frac_target_start = (target_start / target_length)) %>%
-  group_by(target_name) %>%
-  mutate(tReads = n()) %>%
-  ungroup() %>%
-  filter(tReads > minFracAlignedTeloReads * max(tReads)) %>%
-  select(-tReads)
-  } else {
+  
+  longSeqTeloMappings <- filter(teloMappings,
+                                tp == "P",
+                                map_match >= (query_length * 0.8),
+                                target_length > windwSize * 2)
+  
+  mappedTelo <- group_by(longSeqTeloMappings, target_name) %>%
+    mutate(tReads = n()) %>%
+    ungroup() %>%
+    filter(tReads > minFracAlignedTeloReads * max(tReads)) %>%
+    select(-tReads) %>%
+    select(target_name, target_start, target_end, strand)
+  
+  # Add missing levels
+  fLev_mappedTelo <- filter(teloRepsForPlot, 
+                            !contig %in% mappedTelo$target_name) %>%
+    group_by(contig) %>%
+    arrange(desc(wEnd)) %>% slice(1) %>%
+    ungroup() %>% mutate(strand = "+") %>%
+    select(target_name = contig, target_start = wStart,
+           target_end = wEnd, strand) %>%
+    bind_rows(mappedTelo)
+  
+} else {
   mappedTelo <- tibble(target_name = character(), strand = character())
+  
+  fLev_mappedTelo <- group_by(teloRepsForPlot, contig) %>%
+    arrange(desc(wEnd)) %>% slice(c(1, n())) %>%
+    ungroup() %>% mutate(strand = "+") %>%
+    select(target_name = contig, target_start = wStart,
+           target_end = wEnd, strand)
 }
 
-teloRepsForPlot <- filter(telomWind, contig %in% consUsco$Sequence)
+
+
 
 
 # Plot
@@ -185,67 +237,74 @@ if(nrow(consUsco) > 0){
            ints = ifelse(is.na(ints), max(ints, na.rm = T) + windwSize, ints)) %>%
     count(ints, nigon) %>%
     ungroup() %>%
-    ggplot(aes(fill=nigon, y=n, x=ints-windwSize)) + 
-    facet_grid(Sequence ~ ., switch = "y") +
+    ggplot(aes(fill=nigon, y=n, x=ints-(windwSize/2))) + 
+    facet_grid(. ~ Sequence) +
     geom_bar(position="stack", stat="identity") +
-    theme_minimal() +
-    scale_y_continuous(breaks = scales::pretty_breaks(4),
-                       position = "right") +
+    theme_bw() +
+    scale_y_continuous("Nigon loci", 
+                       breaks = scales::pretty_breaks(4),
+                       position = "left") +
     scale_x_continuous(labels = label_number_si()) +
     scale_fill_manual(values = cols) +
     guides(fill = guide_legend(ncol = 1,
                                title = "Nigon")) +
-    ggtitle("Nigons") +
-    theme(axis.title.y=element_blank(),
-          axis.title.x=element_blank(),
-          legend.position="none",
-          panel.border = element_blank()
-    )
+    ggtitle("") +
+    theme(axis.title.x=element_blank(),
+          legend.position="none")
+  
+  plTeloCov <- ggplot(fLev_mappedTelo, aes(x = target_start, fill = strand)) +
+    facet_grid(. ~ target_name) +
+    geom_histogram(bins = 100, alpha=1, position="identity") +
+    theme_bw() +
+    scale_y_continuous("Telomeric reads", position = "left") +
+    scale_x_continuous(labels = label_number_si()) +
+    ggtitle("") +
+    theme(axis.title.x=element_blank(),
+          legend.position="none")
+  
+  plTelo <- ggplot(teloRepsForPlot, aes(x=wStart, y=value)) + 
+    facet_grid(. ~ contig) +
+    geom_line() +
+    theme_bw() +
+    scale_y_continuous("Telomeric repeat", position = "left") +
+    scale_x_continuous(labels = label_number_si()) +
+    ggtitle("") +
+    theme(axis.title.x=element_blank())
+  
+  plGC <- ggplot(gcForPlot, aes(x=wStart, y=value)) + 
+    facet_grid(. ~ contig) +
+    geom_point(alpha=0.1, color = "gray") +
+    geom_smooth(se = FALSE, color = "black", method = "loess") +
+    theme_bw() +
+    scale_y_continuous("GC", labels = scales::percent, position = "left") +
+    scale_x_continuous(labels = label_number_si()) +
+    ggtitle("") +
+    theme(axis.title.x=element_blank())
+  
+  plReps <- ggplot(allRepsForPlot, aes(x=wStart, y=value)) + 
+    facet_grid(. ~ contig) +
+    geom_point(alpha=0.1, color = "gray") +
+    geom_smooth(se = FALSE, color = "black", method = "loess") +
+    theme_bw() +
+    scale_y_continuous("Repeat density",
+                       labels = scales::percent,
+                       position = "left") +
+    scale_x_continuous(labels = label_number_si()) +
+    ggtitle("") +
+    theme(axis.title.x=element_blank())
+  
+  pExpTelo <- ggarrange(plNigon, plTelo, plTeloCov,
+                        plGC, plReps,
+                        nrow = 5, align = c("v"))
+  
 } else {
   plNigon <- ggplot() + theme_void()
-}
-
-
-if(nrow(mappedTelo) > 0){
-  plTeloCov <- ggplot(mappedTelo, aes(x = frac_target_start, fill = strand)) +
-    facet_grid(target_name ~ ., switch = "y") +
-    geom_histogram(bins = 100, alpha=.5, position="identity") +
-    theme_minimal() +
-    scale_y_continuous(position = "right") +
-    scale_x_continuous(labels = scales::percent) +
-    ggtitle("Telomeric reads") +
-    theme(axis.title.y=element_blank(),
-          axis.title.x=element_blank(),
-          panel.border = element_blank(),
-          legend.position="none")
-} else {
   plTeloCov <- ggplot() + theme_void()
-}
-
-
-if(nrow(consUsco) > 0){
-  plTelo <- ggplot(teloRepsForPlot, aes(x=wStart-windwSize, y=teloCount)) + 
-    facet_grid(contig ~ ., switch = "y") +
-    geom_line() +
-    theme_minimal() +
-    scale_y_continuous(position = "right") +
-    scale_x_continuous(labels = label_number_si()) +
-    ggtitle("Telomeric repeat") +
-    theme(axis.title.y=element_blank(),
-          axis.title.x=element_blank(),
-          strip.text.x = element_blank(),
-          strip.background = element_blank(),
-          panel.border = element_blank())
-} else {
   plTelo <- ggplot() + theme_void()
+  pExpTelo <- ggplot() + theme_void()
 }
 
-if(nrow(consUsco) > 0){
-  pExpTelo <- ggarrange(plNigon, plTelo, plTeloCov,
-                        nrow = 1)
-} else {
-  pExpTelo <- plTeloCov
-}
+
 
 # QC metrics
 
@@ -379,12 +438,10 @@ write(busco_string, paste(assemName,
                           ".buscoString.txt",
                           sep = ""))
 
-plotHeight <- min(1 +
-  max(length(unique(consUsco$Sequence)),
-      length(unique(mappedTelo$target_name))) *
-  0.8,
+plotWidth <- min(1 +
+  length(unique(consUsco$Sequence)) * 1,
   50)
 
 ggsave(paste(assemName, ".pdf", sep = ""),
        pExpTelo,
-       width = 8, height = plotHeight)
+       width = plotWidth, height = 9)
