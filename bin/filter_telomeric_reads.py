@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Filter pacbio reads with contigous repeat at their start or end and trim telomeric repeats.
+Identify long reads with telomeric repeats at their start or end, trim and reorient.
+The resulting sequences start on the side were the telomere was trimmed.
 This script relies on the strandedness of the input motif and long reads by assuming that
 the forward motif will only occur on the right end of the reads, 
 while the reverse complement of the motif will occur on the left side.
