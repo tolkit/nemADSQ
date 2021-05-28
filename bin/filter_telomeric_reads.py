@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # parse to read stdin or read to file
     if fastafile == "-":
         infile = sys.stdin
-        print("infile is: {}".format(fastafile))
+        print("Reading from STDIN")
     else:
         infile = open(fastafile, 'rU')
 
@@ -131,9 +131,16 @@ if __name__ == "__main__":
                 telomeric_reads = ''
                 seq_in_mem_len = 0
 
+    # Write sequence left in buffer after loop ends
     if seq_in_mem_len > 0:
         with open(outfile, 'a') as ofh:
                     ofh.writelines(telomeric_reads)
+
+    # If no read had telomeres, create an empty file
+    if not os.path.exists(outfile):
+        open(outfile, 'a').close()
+        print("[WARNING] No reads were identified with telomeric repeat")
+    
 
     # parse to close opened file
     if fastafile != "-":
