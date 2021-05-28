@@ -18,3 +18,4 @@ dependencies:
   - r-optparse=1.6.6
   - r-tidyr=1.1.3
   - r-ggpubr=0.4.0
+  - busco=5.1.3
