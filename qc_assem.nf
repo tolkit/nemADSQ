@@ -200,7 +200,7 @@ process count_telomeric_repeat {
       """
       samtools faidx ${assembly}
       cut -f 1,2 ${assembly}.fai > ${assembler}.seqlen.tsv
-      seqkit locate --bed -M -G -p ${params.telomere} $assembly | \
+      seqkit locate -i --bed -M -G -p ${params.telomere} $assembly | \
         cut -f 1,2,3 | \
         sort -k1,1 -k2,2n > ${assembler}.teloRepeats.tsv
       bedtools makewindows -g ${assembler}.seqlen.tsv -w ${params.teloRepeatWindowSize} | \
