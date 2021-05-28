@@ -441,7 +441,7 @@ write(busco_string, paste(assemName,
                           sep = ""))
 
 plotWidth <- min(1 +
-  length(unique(consUsco$Sequence)) * 1,
+  length(unique(consUsco$Sequence)) * 1.5,
   50)
 
 ggsave(paste(assemName, ".pdf", sep = ""),
