@@ -115,7 +115,7 @@ process red2bed {
         perl -ne 's/ [^\\t]+\\t/\\t/; print' > ${assembler}.bed
       
       bedtools makewindows -g ${assembler}.seqlen.tsv -w ${params.teloRepeatWindowSize} | \
-        bedtools coverage -a ${assembler}.bed -b stdin | \
+        bedtools coverage -a stdin -b ${assembler}.bed | \
         awk -F '\\t' 'BEGIN{OFS=FS}{print \$1, \$2, \$3, \$7, "repeats"}' | \
         gzip -c > ${assembler}.red.bed.gz
       rm ${assembler}.seqlen.tsv ${assembler}.bed
