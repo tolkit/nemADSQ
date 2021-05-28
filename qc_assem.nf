@@ -1,4 +1,4 @@
-nextflow.preview.dsl=2
+nextflow.enable.dsl=2
 
 date = new Date().format( 'yyyyMMdd' )
 params.outdir = "assemblyQC-${date}"
