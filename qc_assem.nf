@@ -91,7 +91,7 @@ process red {
       mkdir Red_dir Red_out
       mv $assembly Red_dir/assembly.fa
 
-      /software/team301/Red-2.0/bin/Red -gnm Red_dir -msk Red_out/
+      Red -gnm Red_dir -msk Red_out/
       """
 }
 
