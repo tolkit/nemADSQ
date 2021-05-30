@@ -194,7 +194,7 @@ if(nrow(teloMappings) > 0){
   
   longSeqTeloMappings <- filter(teloMappings,
                                 tp == "P",
-                                map_match >= (query_length * 0.8),
+                                map_quality >= 50,
                                 target_length > windwSize * 2)
   
   mappedTelo <- mutate(longSeqTeloMappings,
