@@ -16,7 +16,7 @@ params.minimumFracAlignedTeloReads = 0.1
 params.windowSizeQC = 5e5
 
 reads = Channel.fromPath(params.reads, checkIfExists: true)
-                .map { file -> tuple(file.Name - ~/(_filtered)?(\.telo)?(\.ccs)?(\.fa)?(\.fasta)?(\.gz)?$/, file) }
+                .map { file -> tuple(file.Name - ~/(_filtered)?(\.telo)?(\.ccs)?(\.npr)?(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 fastFiles = Channel.fromPath(params.assemblies, checkIfExists: true)
 assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.purged)?(\.hic_scaff)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
