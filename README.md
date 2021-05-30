@@ -34,4 +34,4 @@ nextflow -C nemADSQ/qc_assem.conf run nemADSQ/qc_assem.nf --assemblies "B_okinaw
 ```
 
 Example result of *Bursaphelenchus okinawaensis* (GCA_904067145.1) assembly.
-<img src="examples/B_okinawaensis.png">
+<img src="example/B_okinawaensis.png">
