@@ -69,10 +69,11 @@ def reverse_complement_sequence(seq):
     reverse_complement = "".join(complement.get(base, base) for base in reversed(seq))
     return reverse_complement
 
+search_space_inside_read = 15
 def trim_seq(seq, min_occur, motif_size, motif, rev_motif, longer_motif, longer_rev_motif):
     trimmed_sequence = ''
-    matches_start = seq.find(rev_motif, 0, motif_size * 15)
-    matches_end = seq.find(motif, -motif_size * 15)
+    matches_start = seq.find(rev_motif, 0, motif_size * search_space_inside_read)
+    matches_end = seq.find(motif, -motif_size * search_space_inside_read)
     if matches_start >= 0:
         # longer_motif_matches_start = seq.find(longer_rev_motif, 0, motif_size * min_occur * 3)
         longer_motif_matches_start = seq.rfind(longer_rev_motif)
