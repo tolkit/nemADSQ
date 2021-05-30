@@ -5,7 +5,6 @@ params.outdir = "assemblyQC-${date}"
 params.reads = "mini_DF5120.ccs.fasta.gz"
 params.assemblies = "mini_DF5120.hifiasm.fasta.gz"
 params.odb = 'nematoda_odb10'
-params.busco_downloads = './busco_downloads'
 params.telomere = 'TTAGGC'
 params.busco2nigons = "gene2Nigon_busco20200927.tsv.gz"
 params.min_occurr = 15
@@ -24,7 +23,6 @@ assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)
 busco2nigons = Channel.fromPath(params.busco2nigons, checkIfExists: true).collect()
 
 busco_dbs = Channel.of(params.odb.split(','))
-busco_db_dir = file(params.busco_downloads)
 geno_busco = assemblies.combine(busco_dbs)
 
 
@@ -53,7 +51,6 @@ process busco {
 
     input:
       tuple val(strain), val(assembler), path(genome), val(busco_db)
-      path busco_db_dir
 
     output:
       path "*single_copy_busco_sequences.{faa,fna}"
@@ -72,7 +69,7 @@ process busco {
           echo \">\$(basename \${file%\$ext})\" >> \$seqFile; tail -n +2 \$file >> \$seqFile;
         done
       done
-      rm -rf run_busco/
+      rm -rf run_busco/ busco_downloads/
       """
 }
 
@@ -262,7 +259,7 @@ process get_contiguity_stats {
 
 workflow {
     decompress_fasta(assemblies)
-    busco(decompress_fasta.out.combine(busco_dbs), busco_db_dir)
+    busco(decompress_fasta.out.combine(busco_dbs))
     red(decompress_fasta.out) | red2bed
     gc_by_windows(decompress_fasta.out)
     count_telomeric_repeat(decompress_fasta.out)
