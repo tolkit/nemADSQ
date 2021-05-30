@@ -35,3 +35,7 @@ nextflow -C nemADSQ/qc_assem.conf run nemADSQ/qc_assem.nf --assemblies "B_okinaw
 
 Example result of *Bursaphelenchus okinawaensis* (GCA_904067145.1) assembly.
 <img src="example/B_okinawaensis.png">
+
+## Troubleshooting
+
+If the fraction of repeats appears to be 100% all along the sequences, the bedtools version is incompatible. Check which bedtools is available from the terminal where you launched nextflow and upgrade to bedtool>=2.30.0.
