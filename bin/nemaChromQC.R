@@ -185,9 +185,13 @@ consUsco <- group_by(fbusco, Sequence) %>%
 teloRepsForPlot <- filter(telomWind, contig %in% consUsco$Sequence)
 allRepsForPlot <- filter(repsWind, contig %in% consUsco$Sequence)
 gcForPlot <- filter(gcWind, contig %in% consUsco$Sequence,
-                    value < quantile(value, 0.999),
-                    value > quantile(value, 0.001))
+                    value < quantile(value, 0.98),
+                    value > quantile(value, 0.02))
 
+seqSizes <- group_by(gcForPlot, contig) %>%
+  slice_max(wEnd) %>%
+  ungroup() %>%
+  select(Sequence = contig, size = wEnd)
 
 
 if(nrow(teloMappings) > 0){
@@ -211,10 +215,30 @@ if(nrow(teloMappings) > 0){
                             !contig %in% mappedTelo$target_name) %>%
     group_by(contig) %>%
     arrange(desc(wEnd)) %>% slice(1) %>%
-    ungroup() %>% mutate(strand = "+") %>%
+    ungroup() %>% mutate(strand = "+", frac_target_start = 1) %>%
     select(target_name = contig, target_start = wStart,
-           target_end = wEnd, strand) %>%
+           target_end = wEnd, strand, frac_target_start) %>%
     bind_rows(mappedTelo)
+
+  # Ensure the longest sequence has at least one count
+  if(max(fLev_mappedTelo$target_start) != max(seqSizes$size)){
+    fLev_mappedTelo <- slice_max(seqSizes, size) %>%
+      mutate(strand = "+", frac_target_start = 1,
+             target_end = size-1) %>%
+      select(target_name = Sequence, target_start = size,
+      target_end, frac_target_start) %>%
+      bind_rows(fLev_mappedTelo)
+  }
+  
+  # Ensure there is at least one count at
+  if(min(fLev_mappedTelo$target_start) != 0){
+    fLev_mappedTelo <- slice(seqSizes, 1) %>%
+      mutate(frac_target_start = 0,
+             size = 0, target_end = size+1) %>%
+      select(target_name = Sequence, target_start = size,
+      target_end, frac_target_start) %>%
+      bind_rows(fLev_mappedTelo)
+  }
   
 } else {
   mappedTelo <- tibble(target_name = character(), strand = character())
