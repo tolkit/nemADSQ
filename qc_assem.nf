@@ -15,10 +15,10 @@ params.minimumFracAlignedTeloReads = 0.1
 params.windowSizeQC = 5e5
 
 reads = Channel.fromPath(params.reads, checkIfExists: true)
-                .map { file -> tuple(file.Name - ~/(_filtered)?(\.telo)?(\.ccs)?(\.npr)?(\.fa)?(\.fasta)?(\.gz)?$/, file) }
+                .map { file -> tuple(file.Name - ~/(_filtered)?(_s)?(_l)?(\.telo)?(\.merged)?(\.ccs)?(\.npr)?(\.fasta)?(\.fastq)?(\.fa)?(\.gz)?$/, file) }
 
 fastFiles = Channel.fromPath(params.assemblies, checkIfExists: true)
-assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.canu_plus_flye)?(\.canu)?(\.purged)?(\.hic_scaff)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
+assemblies = fastFiles.map { file -> tuple(file.Name - ~/(_filtered)?(_hifi)?(_s)?(_l)?(\.fullSet)?(\.114xf)?(\.hifi_vs_npr)?(\.npr_vs_hifi)?(\.g30k)?(\.fullSet_hap)?(\.merged_lg30k)?(\.rasusa_10G)?(\.rasusa_6G)?(\.rasusa_both_10G)?(\.flye_vs_hifiasm)?(\.hifiasm_vs_flye)?(\.flye_vs_flye)?(\.canu_vs_wtdbg2)?(\.wtdbg2_vs_canu)?(\.flyemeta)?(\.hifiasm)?(\.flye)?(\.wtdbg2)?(\.flyemeta_rasusa_both_10G)?(\.canu)?(\.mashX)?(\.10G)?(\.20G)?(\.hap1)?(\.hap2)?(\.purged)?(\.hic_scaff)?(\.fixC)?(\.fa)?(\.fasta)?(\.gz)?$/, file.Name - ~/(\.fa)?(\.fasta)?(\.gz)?$/, file) }
 
 busco2nigons = Channel.fromPath(params.busco2nigons, checkIfExists: true).collect()
 
@@ -59,6 +59,8 @@ process busco {
 
     script:
       """
+      export http_proxy=http://wwwcache.sanger.ac.uk:3128
+      export https_proxy=http://wwwcache.sanger.ac.uk:3128
       busco -c ${task.cpus} -l $busco_db -i $genome --out run_busco --mode geno
       awk 'BEGIN{FS="\\t";OFS=FS}(\$3 !~ /:/){print}' run_busco/run_*/full_table.tsv > ${assembler}_${busco_db}_full_table.tsv
       mv run_busco/short_summary* ${assembler}_${busco_db}_short_summary.txt
@@ -138,7 +140,7 @@ process gc_by_windows {
         -w ${params.teloRepeatWindowSize} > windows.bed
 
       bedtools nuc -fi assembly.fasta -bed windows.bed | \
-        cut -f 1-4 | tail -n+2 | \
+        cut -f 1-3,5 | tail -n+2 | \
         gzip -c > ${assembler}.gc.bed.gz
       
       rm assembly.fasta* ${assembler}.seqlen.tsv windows.bed
