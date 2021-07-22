@@ -131,6 +131,42 @@ tidy_paf_tags <- function(.data){
   bind_cols(select(.data, -starts_with("tag_")), tag_df)
 }
 
+# Function to group reads in blocks
+block_mappings <- function(teloMappings){
+  
+  duplicateIds <- filter(teloMappings, duplicated(query_name)) %>%
+    pull(query_name) %>% unique
+  unduplicated <- filter(teloMappings, query_name %in% duplicateIds) %>%
+    group_by(query_name) %>%
+    mutate(onlyInFrag = max(target_length) < 1e6) %>%
+    filter((target_length < 1e6 & onlyInFrag) | target_length >= 1e6) %>%
+    slice_min(query_start) %>%
+    slice_max(map_quality) %>%
+    slice_min(target_start) %>%
+    ungroup()
+  onlyOneMap <- filter(teloMappings, !query_name %in% duplicateIds) %>%
+    bind_rows(unduplicated)
+  
+  teloBlocks <- mutate(onlyOneMap, rstart = ifelse(strand == "+",
+                                                   target_start, target_end)) %>%
+    arrange(target_name, rstart) %>%
+    group_by(target_name, strand) %>%
+    mutate(block = cumsum(c(1, diff(rstart) > 100))) %>% #filter(target_name == "ptg000011l") %>% select(target_name, strand, target_start, target_end, block) %>% View
+    group_by(target_name, strand, block) %>%
+    summarise(strand = unique(strand),
+              regionStart = ifelse(strand == "-", max(target_start),
+                                   min(target_start)),
+              regionEnd = ifelse(strand == "+", max(target_end),
+                                 min(target_end)),
+              teloPos = ifelse(strand == "+", regionStart, regionEnd) ,
+              target_length = unique(target_length),
+              regSupport = n(),
+              .groups = "drop") %>%
+    select(target_name, target_length, strand, block, teloPos)
+  return(teloBlocks)
+}
+
+
 
 
 # Load data
@@ -167,6 +203,10 @@ gcWind <- read_tsv(gcFile,
 # even if they are have no telomere. I will add 1 count at the very end
 # of each contig to keep axis and levels.
 
+
+# get telomere mapping coordinates into blocks
+teloBlocks <- block_mappings(teloMappings)
+
 # Filter data
 fbusco <- filter(busco, !Status %in% c("Missing")) %>%
   left_join(nigonDict, by = c("Busco_id" = "Orthogroup")) %>%
@@ -198,7 +238,8 @@ if(nrow(teloMappings) > 0){
   
   longSeqTeloMappings <- filter(teloMappings,
                                 tp == "P",
-                                map_quality >= 50,
+                                #map_quality >= 50,
+                                map_length > query_length * 0.8,
                                 target_length > windwSize * 2)
   
   mappedTelo <- mutate(longSeqTeloMappings,
@@ -334,20 +375,6 @@ if(nrow(consUsco) > 0){
 
 # QC metrics
 
-# get telomere mapping coordinates into blocks
-teloBlocks <- mutate(mappedTelo, rstart = ifelse(strand == "+",
-                         target_start, target_end)) %>%
-  arrange(target_name, rstart) %>%
-  group_by(target_name, strand) %>%
-  mutate(block = cumsum(c(1, diff(rstart) > 100))) %>% #filter(target_name == "ptg000011l") %>% select(target_name, strand, target_start, target_end, block) %>% View
-  group_by(target_name, strand, block) %>%
-  summarise(strand = unique(strand),
-            regionStart = ifelse(strand == "-", max(target_start),
-                                  min(target_start)),
-            regionEnd = ifelse(strand == "+", max(target_end),
-                                min(target_end)),
-            regSupport = n(),
-            .groups = "drop")
 # identify erroneous Nigon fusions. Assuming O. tipulae karyotype
 if(any(grepl("\\+", mappedTelo$strand)) & any(grepl("-", mappedTelo$strand))) {
   teloFracByStrand <- mutate(mappedTelo, cstrand = ifelse(strand == "+", "pos", "neg")) %>%
@@ -389,6 +416,35 @@ if(nrow(consUsco > 0)){
 nigonFusedAndInternalTelomere <- filter(nigonFused, Sequence %in%
                                           seqsWithInternalTelomere)
 
+
+# I add an artificicial duplicate in case in doesn't exist
+# to be able to create a "Duplicated" column in the busco_score step ahead.
+if(!"Duplicated" %in% busco$Status){
+  busco <- tibble(Busco_id = "fakeBusco1", Status = "Duplicated",
+                  Sequence = "NonExistent", start = 0, end = 1008100,
+                  strand = "+", Score = 100, Length = 1000, OrthoDB_url = "url",
+                  Description = "none") %>%
+  bind_rows(busco)
+  print("not Duplicated")
+}
+
+if(!"Fragmented" %in% busco$Status){
+  busco <- tibble(Busco_id = "fakeBusco2", Status = "Fragmented",
+                  Sequence = "NonExistent", start = 0, end = 1008100,
+                  strand = "+", Score = 100, Length = 1000, OrthoDB_url = "url",
+                  Description = "none") %>%
+  bind_rows(busco)
+  print("not Fragmented")
+}
+
+if(!"Missing" %in% busco$Status){
+  busco <- tibble(Busco_id = "fakeBusco3", Status = "Missing",
+                  Sequence = "NonExistent", start = 0, end = 1008100,
+                  strand = "+", Score = 100, Length = 1000, OrthoDB_url = "url",
+                  Description = "none") %>%
+  bind_rows(busco)
+  print("not Missing")
+}
 
 # calculate busco string because BUSCO sometimes fails in rounding
 busco_score <- filter(busco, !duplicated(Busco_id)) %>%
