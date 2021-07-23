@@ -162,7 +162,7 @@ block_mappings <- function(teloMappings){
               target_length = unique(target_length),
               regSupport = n(),
               .groups = "drop") %>%
-    select(target_name, target_length, strand, block, teloPos)
+    select(target_name, target_length, strand, block, teloPos, regSupport)
   return(teloBlocks)
 }
 
