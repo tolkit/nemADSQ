@@ -162,6 +162,7 @@ block_mappings <- function(teloMappings){
               target_length = unique(target_length),
               regSupport = n(),
               .groups = "drop") %>%
+    arrange(target_name, teloPos) %>%
     select(target_name, target_length, strand, block, teloPos, regSupport)
   return(teloBlocks)
 }
@@ -204,9 +205,6 @@ gcWind <- read_tsv(gcFile,
 # of each contig to keep axis and levels.
 
 
-# get telomere mapping coordinates into blocks
-teloBlocks <- block_mappings(teloMappings)
-
 # Filter data
 fbusco <- filter(busco, !Status %in% c("Missing")) %>%
   left_join(nigonDict, by = c("Busco_id" = "Orthogroup")) %>%
@@ -235,6 +233,8 @@ seqSizes <- group_by(gcForPlot, contig) %>%
 
 
 if(nrow(teloMappings) > 0){
+  # get telomere mapping coordinates into blocks
+  teloBlocks <- block_mappings(teloMappings)
   
   longSeqTeloMappings <- filter(teloMappings,
                                 tp == "P",
@@ -282,6 +282,7 @@ if(nrow(teloMappings) > 0){
   }
   
 } else {
+  teloBlocks <- tibble(target_name = character(), strand = character())
   mappedTelo <- tibble(target_name = character(), strand = character())
   
   fLev_mappedTelo <- group_by(teloRepsForPlot, contig) %>%
