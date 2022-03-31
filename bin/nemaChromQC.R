@@ -28,9 +28,9 @@ option_list = list(
   make_option(c("-m", "--minimumGenesPerSequence"), type="integer", default=15,
               help="sequences (contigs/scaffolds) with less than this number of busco genes will not be shown in the plot [default=%default]", metavar="integer"),
   make_option(c("-k", "--minimumNigonFrac"), type="numeric", default=0.9,
-              help="sequences containing more than this fraction of a given Nigon are considered to represent the whole Nigon unit [default=%default]", metavar="integer"),
+              help="sequences containing more than this fraction of a given Nigon are considered to represent the whole Nigon unit [default=%default]", metavar="numeric"),
   make_option(c("-p", "--minimumFracAlignedTeloReads"), type="numeric", default=0.1,
-                help="only sequences with more than this fraction of the telomeric reads are considered for the plot of mapped telomeric reads and for completeness assessment based on mapping position of telomeric reads [default=%default]", metavar="integer"),
+                help="only sequences with more than this fraction of the telomeric reads are considered for the plot of mapped telomeric reads and for completeness assessment based on mapping position of telomeric reads [default=%default]", metavar="numeric"),
   make_option(c("-s", "--assemblyName"), type="character", default=NULL,
               help="prefix for output files [default=%default]", metavar="strain_assembler"),
   make_option(c("--height"), type="integer", default=6,
@@ -131,21 +131,33 @@ tidy_paf_tags <- function(.data){
   bind_cols(select(.data, -starts_with("tag_")), tag_df)
 }
 
+# Function to get mode 
+getMode <- function(x) {
+  keys <- unique(x)
+  keys[which.max(tabulate(match(x, keys)))]
+}
+
 # Function to group reads in blocks
 block_mappings <- function(teloMappings){
   
-  duplicateIds <- filter(teloMappings, duplicated(query_name)) %>%
+  hqTeloMappings <- filter(teloMappings,
+                                tp == "P",
+                                map_length > query_length * 0.8,
+                                target_length > windwSize * 2)
+  duplicateIds <- filter(hqTeloMappings, duplicated(query_name)) %>%
     pull(query_name) %>% unique
-  unduplicated <- filter(teloMappings, query_name %in% duplicateIds) %>%
+  unduplicated <- filter(hqTeloMappings, query_name %in% duplicateIds) %>%
     group_by(query_name) %>%
-    mutate(onlyInFrag = max(target_length) < 1e6) %>%
-    filter((target_length < 1e6 & onlyInFrag) | target_length >= 1e6) %>%
+    mutate(onlyInFrag = max(target_length) < windwSize * 2) %>%
+    filter((target_length < windwSize * 2 & onlyInFrag) | target_length >= windwSize * 2) %>%
     slice_min(query_start) %>%
     slice_max(map_quality) %>%
     slice_min(target_start) %>%
     ungroup()
-  onlyOneMap <- filter(teloMappings, !query_name %in% duplicateIds) %>%
+  onlyOneMap <- filter(hqTeloMappings, !query_name %in% duplicateIds) %>%
     bind_rows(unduplicated)
+
+  
   
   teloBlocks <- mutate(onlyOneMap, rstart = ifelse(strand == "+",
                                                    target_start, target_end)) %>%
@@ -154,10 +166,10 @@ block_mappings <- function(teloMappings){
     mutate(block = cumsum(c(1, diff(rstart) > 100))) %>% #filter(target_name == "ptg000011l") %>% select(target_name, strand, target_start, target_end, block) %>% View
     group_by(target_name, strand, block) %>%
     summarise(strand = unique(strand),
-              regionStart = ifelse(strand == "-", max(target_start),
-                                   min(target_start)),
-              regionEnd = ifelse(strand == "+", max(target_end),
-                                 min(target_end)),
+              regionStart = ifelse(strand == "-", getMode(target_start),
+                                   getMode(target_start)),
+              regionEnd = ifelse(strand == "+", getMode(target_end),
+                                 getMode(target_end)),
               teloPos = ifelse(strand == "+", regionStart, regionEnd) ,
               target_length = unique(target_length),
               regSupport = n(),
