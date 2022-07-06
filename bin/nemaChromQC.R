@@ -9,6 +9,7 @@ library(tibble)
 suppressPackageStartupMessages(library(scales))
 library(ggplot2)
 library(ggpubr)
+library(gtools)
 
 option_list = list(
   make_option(c("-b", "--busco"), type="character", default=NULL,
@@ -317,6 +318,8 @@ if(nrow(consUsco) > 0){
            ints = ifelse(is.na(ints), max(ints, na.rm = T) + windwSize, ints)) %>%
     count(ints, nigon) %>%
     ungroup() %>%
+    mutate(Sequence = factor(Sequence,
+                            levels = mixedsort(unique(Sequence)))) %>%
     ggplot(aes(fill=nigon, y=n, x=ints-(windwSize/2))) + 
     facet_grid(. ~ Sequence) +
     geom_bar(position="stack", stat="identity") +
@@ -332,7 +335,9 @@ if(nrow(consUsco) > 0){
     theme(axis.title.x=element_blank(),
           legend.position="none")
   
-  plTeloCov <- ggplot(fLev_mappedTelo, aes(x = target_start, fill = strand)) +
+  plTeloCov <- mutate(fLev_mappedTelo, target_name = factor(target_name,
+                            levels = mixedsort(unique(target_name)))) %>%
+    ggplot(aes(x = target_start, fill = strand)) +
     facet_grid(. ~ target_name) +
     geom_histogram(bins = 100, alpha=1, position="identity") +
     theme_bw() +
@@ -342,7 +347,9 @@ if(nrow(consUsco) > 0){
     theme(axis.title.x=element_blank(),
           legend.position="none")
   
-  plTelo <- ggplot(teloRepsForPlot, aes(x=wStart, y=value)) + 
+  plTelo <- mutate(teloRepsForPlot, contig = factor(contig,
+                            levels = mixedsort(unique(contig)))) %>%
+    ggplot(aes(x=wStart, y=value)) + 
     facet_grid(. ~ contig) +
     geom_line() +
     theme_bw() +
@@ -351,7 +358,9 @@ if(nrow(consUsco) > 0){
     ggtitle("") +
     theme(axis.title.x=element_blank())
   
-  plGC <- ggplot(gcForPlot, aes(x=wStart, y=value)) + 
+  plGC <- mutate(gcForPlot, contig = factor(contig,
+                            levels = mixedsort(unique(contig)))) %>%
+    ggplot(aes(x=wStart, y=value)) + 
     facet_grid(. ~ contig) +
     geom_point(alpha=0.1, color = "gray") +
     geom_smooth(se = FALSE, color = "black", method = "loess") +
@@ -361,7 +370,9 @@ if(nrow(consUsco) > 0){
     ggtitle("") +
     theme(axis.title.x=element_blank())
   
-  plReps <- ggplot(allRepsForPlot, aes(x=wStart, y=value)) + 
+  plReps <- mutate(allRepsForPlot, contig = factor(contig,
+                            levels = mixedsort(unique(contig)))) %>%
+    ggplot(aes(x=wStart, y=value)) + 
     facet_grid(. ~ contig) +
     geom_point(alpha=0.1, color = "gray") +
     geom_smooth(se = FALSE, color = "black", method = "loess") +
